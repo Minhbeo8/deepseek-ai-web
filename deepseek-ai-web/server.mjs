@@ -58,10 +58,11 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // Phục vụ giao diện frontend (Vite build)
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'dist/public')));
 
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+// Dùng biểu thức chính quy (Regex) thay cho dấu '*' để tương thích với Express phiên bản mới
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist/public/index.html'));
 });
 
 app.listen(PORT, () => {
