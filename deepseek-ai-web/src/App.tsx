@@ -173,6 +173,56 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function normalizeTextContent(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeTextContent(item))
+      .filter(Boolean)
+      .join('');
+  }
+
+  if (value && typeof value === 'object') {
+    if (typeof (value as { text?: unknown }).text === 'string') {
+      return normalizeTextContent((value as { text: unknown }).text);
+    }
+
+    if (typeof (value as { content?: unknown }).content === 'string') {
+      return normalizeTextContent((value as { content: unknown }).content);
+    }
+
+    if (typeof (value as { message?: unknown }).message === 'string') {
+      return normalizeTextContent((value as { message: unknown }).message);
+    }
+
+    if ((value as { message?: unknown }).message && typeof (value as { message: unknown }).message === 'object') {
+      return normalizeTextContent((value as { message: unknown }).message);
+    }
+
+    if (Array.isArray((value as { content?: unknown }).content)) {
+      return normalizeTextContent((value as { content: unknown }).content);
+    }
+
+    if ('answer' in value) {
+      return normalizeTextContent((value as { answer?: unknown }).answer);
+    }
+
+    if ('result' in value) {
+      return normalizeTextContent((value as { result?: unknown }).result);
+    }
+
+    return Object.values(value)
+      .map((item) => normalizeTextContent(item))
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  return value == null ? '' : String(value);
+}
+
 // ==========================================
 // FILE EXTRACTION
 // ==========================================
@@ -284,7 +334,7 @@ function loadChats(): SavedChat[] {
           )
           .map((message: ChatMessage) => ({
             role: message.role,
-            content: message.content,
+            content: normalizeTextContent(message.content),
 
             ...(typeof message.displayContent === 'string'
               ? { displayContent: message.displayContent }
@@ -327,7 +377,7 @@ function cleanForStorage(chats: SavedChat[]) {
           attachments,
         }) => ({
           role,
-          content,
+          content: normalizeTextContent(content),
 
           ...(displayContent
             ? { displayContent }
@@ -433,7 +483,6 @@ function Markdown({
       continue;
     }
 
-    // Code blocks
     if (line.trim().startsWith('```')) {
       const language = line.trim().slice(3).trim();
 
@@ -476,7 +525,6 @@ function Markdown({
       continue;
     }
 
-    // Headings
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
 
     if (heading) {
@@ -495,7 +543,6 @@ function Markdown({
       continue;
     }
 
-    // Unordered lists
     if (/^\s*[-+]\s+/.test(line)) {
       const items: string[] = [];
 
@@ -521,7 +568,6 @@ function Markdown({
       continue;
     }
 
-    // Ordered lists
     if (/^\s*\d+\.\s+/.test(line)) {
       const items: string[] = [];
 
@@ -547,7 +593,6 @@ function Markdown({
       continue;
     }
 
-    // Blockquotes
     if (/^\s*>\s?/.test(line)) {
       const quote: string[] = [];
 
@@ -569,7 +614,6 @@ function Markdown({
       continue;
     }
 
-    // Paragraphs
     const paragraph = [line];
 
     index++;
@@ -651,10 +695,6 @@ function Home() {
   const activeChat =
     chats.find((chat) => chat.id === activeId) ?? null;
 
-  // ========================================
-  // INITIAL API CONFIGURATION
-  // ========================================
-
   useEffect(() => {
     let cancelled = false;
 
@@ -710,10 +750,6 @@ function Home() {
     };
   }, []);
 
-  // ========================================
-  // TOAST NOTIFICATION
-  // ========================================
-
   const notify = useCallback((message: string) => {
     setToast(message);
 
@@ -725,10 +761,6 @@ function Home() {
       setToast('');
     }, 2300);
   }, []);
-
-  // ========================================
-  // SAVE CHAT HISTORY
-  // ========================================
 
   const commitChats = useCallback(
     (
@@ -742,7 +774,6 @@ function Home() {
           : next;
 
       chatsRef.current = updated;
-
       setChats(updated);
 
       try {
@@ -751,17 +782,11 @@ function Home() {
           JSON.stringify(cleanForStorage(updated))
         );
       } catch {
-        notify(
-          'Không đủ dung lượng lưu lịch sử trên trình duyệt.'
-        );
+        notify('Không đủ dung lượng lưu lịch sử trên trình duyệt.');
       }
     },
     [notify]
   );
-
-  // ========================================
-  // CHAT EFFECTS
-  // ========================================
 
   useEffect(() => {
     if (!activeId && chats.length) {
@@ -787,10 +812,6 @@ function Home() {
     };
   }, []);
 
-  // ========================================
-  // CREATE NEW CHAT
-  // ========================================
-
   const createChat = useCallback(() => {
     const chat = {
       id: newId(),
@@ -810,10 +831,6 @@ function Home() {
       inputRef.current?.focus();
     });
   }, [commitChats]);
-
-  // ========================================
-  // COPY TEXT
-  // ========================================
 
   const copyText = useCallback(
     async (
@@ -837,10 +854,6 @@ function Home() {
     [notify]
   );
 
-  // ========================================
-  // STREAM AI RESPONSE
-  // ========================================
-
   const streamReply = useCallback(
     async (chatId: string, assistant: ChatMessage) => {
       const chat = chatsRef.current.find(
@@ -858,22 +871,18 @@ function Home() {
         )
         .map(({ role, content }) => ({
           role,
-          content,
+          content: normalizeTextContent(content),
         }));
 
       const controller = new AbortController();
-
       controllerRef.current = controller;
 
       const response = await fetch('/api/chat', {
         method: 'POST',
-
         headers: {
           'Content-Type': 'application/json',
         },
-
         signal: controller.signal,
-
         body: JSON.stringify({
           messages,
         }),
@@ -909,14 +918,11 @@ function Home() {
       }
 
       if (!response.body) {
-        throw new Error(
-          'Trình duyệt không hỗ trợ streaming.'
-        );
+        throw new Error('Trình duyệt không hỗ trợ streaming.');
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-
       let buffer = '';
 
       const consumeLine = (line: string) => {
@@ -925,16 +931,15 @@ function Home() {
         }
 
         const data = line.slice(5).trim();
-
         if (!data || data === '[DONE]') {
           return;
         }
 
         let payload: {
-          error?: any;
+          error?: unknown;
           choices?: Array<{
             delta?: {
-              content?: string;
+              content?: unknown;
             };
           }>;
         };
@@ -949,16 +954,17 @@ function Home() {
           const errStr =
             typeof payload.error === 'string'
               ? payload.error
-              : payload.error.message ||
-                JSON.stringify(payload.error);
+              : payload.error && typeof payload.error === 'object' && 'message' in payload.error && typeof (payload.error as { message?: unknown }).message === 'string'
+                ? (payload.error as { message: string }).message
+                : JSON.stringify(payload.error);
 
           throw new Error(errStr);
         }
 
-        const delta =
-          payload.choices?.[0]?.delta?.content;
+        const rawDelta = payload.choices?.[0]?.delta?.content;
+        const delta = normalizeTextContent(rawDelta);
 
-        if (typeof delta === 'string') {
+        if (delta) {
           assistant.content += delta;
 
           commitChats((previous) =>
@@ -966,13 +972,12 @@ function Home() {
               item.id === chatId
                 ? {
                     ...item,
-
                     messages: item.messages.map(
                       (message) =>
                         message.streamId === assistant.streamId
                           ? {
                               ...message,
-                              content: assistant.content,
+                              content: normalizeTextContent(assistant.content),
                             }
                           : message
                     ),
@@ -988,7 +993,6 @@ function Home() {
 
         while (!done) {
           const result = await reader.read();
-
           done = result.done;
 
           buffer += decoder.decode(result.value, {
@@ -996,7 +1000,6 @@ function Home() {
           });
 
           const lines = buffer.split(/\r?\n/);
-
           buffer = lines.pop() || '';
 
           lines.forEach(consumeLine);
@@ -1012,10 +1015,6 @@ function Home() {
     [commitChats]
   );
 
-  // ========================================
-  // GENERATE AI RESPONSE
-  // ========================================
-
   const runGeneration = useCallback(
     async (chatId: string, assistant: ChatMessage) => {
       setGenerating(true);
@@ -1025,6 +1024,7 @@ function Home() {
         await streamReply(chatId, assistant);
 
         assistant.streaming = false;
+        assistant.content = normalizeTextContent(assistant.content);
 
         if (!assistant.content) {
           assistant.content = '(AI không trả về nội dung.)';
@@ -1046,7 +1046,6 @@ function Home() {
           message = String(error);
         }
 
-        // Clean up JSON error messages
         try {
           const parsed = JSON.parse(message);
 
@@ -1068,12 +1067,11 @@ function Home() {
           error instanceof DOMException &&
           error.name === 'AbortError'
             ? 'Đã dừng tạo câu trả lời.'
-            : `Không thể nhận câu trả lời: ${message}`;
+            : `Không thể nhận câu trả lời: ${normalizeTextContent(message)}`;
 
         setErrorMessage(message);
       } finally {
         controllerRef.current = null;
-
         setGenerating(false);
 
         commitChats((previous) =>
@@ -1081,13 +1079,13 @@ function Home() {
             item.id === chatId
               ? {
                   ...item,
-
                   messages: item.messages.map(
                     (message) =>
                       message.streamId === assistant.streamId
                         ? {
                             ...assistant,
                             streaming: false,
+                            content: normalizeTextContent(assistant.content),
                           }
                         : message
                   ),
@@ -1099,10 +1097,6 @@ function Home() {
     },
     [commitChats, streamReply]
   );
-
-  // ========================================
-  // SEND MESSAGE
-  // ========================================
 
   const sendMessage = useCallback(
     async (
@@ -1141,10 +1135,12 @@ function Home() {
         .join('');
 
       const messageContent =
-        displayText.slice(
-          0,
-          Math.max(0, 120_000 - fileContext.length)
-        ) + fileContext;
+        normalizeTextContent(
+          displayText.slice(
+            0,
+            Math.max(0, 120_000 - fileContext.length)
+          ) + fileContext
+        );
 
       let chat = chatsRef.current.find(
         (item) => item.id === activeId
@@ -1158,7 +1154,6 @@ function Home() {
         };
 
         setActiveId(chat.id);
-
         commitChats((previous) => [chat!, ...previous]);
       }
 
@@ -1197,11 +1192,9 @@ function Home() {
           item.id === chatId
             ? {
                 ...item,
-
                 title: firstUserMessage
                   ? displayText.slice(0, 42)
                   : item.title,
-
                 messages: [
                   ...item.messages,
                   userMessage,
@@ -1229,10 +1222,6 @@ function Home() {
       runGeneration,
     ]
   );
-
-  // ========================================
-  // RETRY MESSAGE
-  // ========================================
 
   const retryMessage = useCallback(
     async (messageIndex: number) => {
@@ -1292,10 +1281,6 @@ function Home() {
     ]
   );
 
-  // ========================================
-  // RENAME CHAT
-  // ========================================
-
   const renameChat = (chat: SavedChat) => {
     const next = window.prompt(
       'Tên cuộc trò chuyện:',
@@ -1316,10 +1301,6 @@ function Home() {
     }
   };
 
-  // ========================================
-  // DELETE CHAT
-  // ========================================
-
   const deleteChat = (chat: SavedChat) => {
     if (!window.confirm('Xóa cuộc trò chuyện này?')) {
       return;
@@ -1338,10 +1319,6 @@ function Home() {
     setErrorMessage(null);
   };
 
-  // ========================================
-  // FORM HANDLERS
-  // ========================================
-
   const handleSubmit = (
     event: FormEvent<HTMLFormElement>
   ) => {
@@ -1356,14 +1333,9 @@ function Home() {
     setDraft(event.target.value);
 
     event.target.style.height = 'auto';
-
     event.target.style.height =
       `${Math.min(event.target.scrollHeight, 180)}px`;
   };
-
-  // ========================================
-  // FILE UPLOAD HANDLER
-  // ========================================
 
   const handleFilesSelected = async (
     event: ChangeEvent<HTMLInputElement>
@@ -1469,22 +1441,13 @@ function Home() {
     setReadingFiles(false);
   };
 
-  // ========================================
-  // RENDER
-  // ========================================
-
   return (
     <div className="app-shell">
-
-      {/* Mobile backdrop */}
-
       <div
         className={`mobile-backdrop ${sidebarOpen ? 'show' : ''}`}
         onClick={() => setSidebarOpen(false)}
         aria-hidden="true"
       />
-
-      {/* Sidebar */}
 
       <aside
         className={`sidebar ${sidebarOpen ? 'open' : ''}`}
@@ -1518,7 +1481,6 @@ function Home() {
           data-testid="button-new-chat"
         >
           <MessageSquarePlus size={16} />
-
           <span>Cuộc trò chuyện mới</span>
         </button>
 
@@ -1583,8 +1545,6 @@ function Home() {
           ))}
         </div>
 
-        {/* Sidebar footer */}
-
         <div className="sidebar-foot">
           <div className="model-status">
             <span
@@ -1613,12 +1573,7 @@ function Home() {
         </div>
       </aside>
 
-      {/* Main */}
-
       <main className="main">
-
-        {/* Topbar */}
-
         <header className="topbar">
           <button
             className="icon-button menu-button"
@@ -1651,8 +1606,6 @@ function Home() {
             </button>
           </div>
         </header>
-
-        {/* Chat content */}
 
         <section
           className="chat-scroll"
@@ -1722,7 +1675,7 @@ function Home() {
                     >
                       {message.role === 'assistant' ? (
                         <Markdown
-                          text={message.content}
+                          text={normalizeTextContent(message.content)}
                           onCopy={(value) =>
                             void copyText(
                               value,
@@ -1733,8 +1686,9 @@ function Home() {
                       ) : (
                         <>
                           <span>
-                            {message.displayContent ??
-                              message.content}
+                            {normalizeTextContent(
+                              message.displayContent ?? message.content
+                            )}
                           </span>
 
                           {!!message.attachments?.length && (
@@ -1746,7 +1700,6 @@ function Home() {
                                     key={`${file.name}-${fileIndex}`}
                                   >
                                     <FileText size={13} />
-
                                     {file.name}
                                   </span>
                                 )
@@ -1756,18 +1709,16 @@ function Home() {
                         </>
                       )}
 
-                      {/* Message tools */}
-
                       {message.role === 'assistant' &&
                         !message.streaming && (
                           <div className="message-tools">
                             <button
                               onClick={() =>
-                                void copyText(message.content)
+                                void copyText(normalizeTextContent(message.content))
                               }
                               data-testid={`button-copy-answer-${index}`}
                             >
-                              {copied === message.content ? (
+                              {copied === normalizeTextContent(message.content) ? (
                                 <Check size={13} />
                               ) : (
                                 <Copy size={13} />
@@ -1784,7 +1735,6 @@ function Home() {
                               data-testid={`button-retry-answer-${index}`}
                             >
                               <RefreshCw size={13} />
-
                               Thử lại
                             </button>
                           </div>
@@ -1797,8 +1747,6 @@ function Home() {
           )}
         </section>
 
-        {/* Composer */}
-
         <div className="composer-wrap">
           <form
             className="composer"
@@ -1809,15 +1757,13 @@ function Home() {
               type="file"
               className="hidden"
               multiple
-              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.xml,.html,.htm,.js,.jsx,.ts,.tsx,.css,.scss,.py,.java,.go,.rs,.sql,.yaml,.yml,.toml,.log,.sh,.bash,.c,.cpp,.h,.hpp,.php,.rb,.swift,.kt,.env,.ini,.lua,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*"
+              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.xml,.html,.htm,.js,.jsx,.ts,.tsx,.css,.scss,.py,.java,.go,.rs,.sql,.yaml,.yml,.toml,.log,.sh,.bash,.c,.cpp,.h,.hpp,.php,.rb,.swift,.kt,.lua,.dockerfile,.env,.ini"
               onChange={(event) =>
                 void handleFilesSelected(event)
               }
               disabled={generating || readingFiles}
               aria-label="Chọn tệp để gửi cho DeepSeek"
             />
-
-            {/* Pending attachments */}
 
             {!!attachments.length && (
               <div
@@ -1863,8 +1809,6 @@ function Home() {
               </div>
             )}
 
-            {/* Textarea */}
-
             <textarea
               ref={inputRef}
               className="prompt-input"
@@ -1876,7 +1820,6 @@ function Home() {
                   !event.shiftKey
                 ) {
                   event.preventDefault();
-
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
@@ -1887,8 +1830,6 @@ function Home() {
               aria-label="Tin nhắn của bạn"
               data-testid="input-chat-message"
             />
-
-            {/* Composer bottom */}
 
             <div className="composer-bottom">
               <div className="composer-controls">
@@ -1962,8 +1903,6 @@ function Home() {
         </div>
       </main>
 
-      {/* Error toast */}
-
       {errorMessage && (
         <div
           className="toast show"
@@ -1973,8 +1912,6 @@ function Home() {
           {`Không thể nhận câu trả lời: ${errorMessage}`}
         </div>
       )}
-
-      {/* Notification toast */}
 
       <div
         className={`toast ${toast ? 'show' : ''}`}
@@ -1986,10 +1923,6 @@ function Home() {
     </div>
   );
 }
-
-// ==========================================
-// ROUTER
-// ==========================================
 
 function Router() {
   return (
@@ -2005,10 +1938,6 @@ function Router() {
     </ErrorBoundary>
   );
 }
-
-// ==========================================
-// APP
-// ==========================================
 
 function App() {
   return (
