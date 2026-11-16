@@ -21,6 +21,43 @@ app.use(cors());
 const API_URL = process.env.API_URL || "https://motapis.com/v1/chat/completions";
 const API_KEY = process.env.API_KEY || process.env.APINEX_API_KEY;
 
+function normalizeChatCompletion(data) {
+  const choice = data?.choices?.[0];
+
+  const messageContent =
+    choice?.message?.content ??
+    choice?.text ??
+    data?.message?.content ??
+    data?.content ??
+    data?.answer ??
+    data?.result ??
+    '';
+
+  return {
+    id: data?.id || 'chatcmpl-local',
+    object: 'chat.completion',
+    created: Date.now(),
+    model: data?.model || 'deepseek-v4-flash',
+    choices: [
+      {
+        index: 0,
+        finish_reason: 'stop',
+        message: {
+          role: 'assistant',
+          content: typeof messageContent === 'string'
+            ? messageContent
+            : JSON.stringify(messageContent ?? ''),
+        },
+      },
+    ],
+    usage: data?.usage || {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    },
+  };
+}
+
 // API endpoint xử lý chat
 app.post('/api/chat', async (req, res) => {
   try {
@@ -45,12 +82,13 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    
+
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
 
-    res.json(data);
+    const normalized = normalizeChatCompletion(data);
+    res.json(normalized);
   } catch (error) {
     console.error("Lỗi khi gọi API:", error);
     res.status(500).json({ error: { message: "Lỗi kết nối máy chủ nội bộ" } });
