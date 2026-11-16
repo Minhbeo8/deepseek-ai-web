@@ -29,12 +29,12 @@ type SavedChat = { id: string; title: string; messages: ChatMessage[] };
 const STORAGE_KEY = 'deepseek_ai_chats_v1';
 const MAX_FILES = 3;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const MAX_EXTRACTED_CHARS = 24_000;
+const MAX_EXTRACTED_CHARS = 100_000;
 const TEXT_FILE_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'xml', 'html', 'htm',
   'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'py', 'java', 'go', 'rs', 'sql',
   'yaml', 'yml', 'toml', 'log', 'sh', 'bash', 'c', 'cpp', 'h', 'hpp', 'php',
-  'rb', 'swift', 'kt', 'dockerfile', 'env', 'ini',
+  'rb', 'swift', 'kt', 'lua', 'dockerfile', 'env', 'ini',
 ]);
 const suggestions = [
   { label: 'Giải thích một khái niệm', prompt: 'Giải thích một khái niệm khó theo cách dễ hiểu.' },
@@ -378,7 +378,7 @@ function Home() {
       remainingChars -= extractedText.length;
       return `\n\n--- Nội dung tệp: ${file.name} ---\n${extractedText}`;
     }).join('');
-    const messageContent = `${displayText.slice(0, Math.max(0, 29_500 - fileContext.length))}${fileContext}`;
+    const messageContent = `${displayText.slice(0, Math.max(0, 120_000 - fileContext.length))}${fileContext}`;
     let chat = chatsRef.current.find((item) => item.id === activeId);
     if (!chat) {
       chat = { id: newId(), title: 'Cuộc trò chuyện mới', messages: [] };
@@ -592,7 +592,7 @@ function Home() {
               type="file"
               className="hidden"
               multiple
-              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.xml,.html,.htm,.js,.jsx,.ts,.tsx,.css,.scss,.py,.java,.go,.rs,.sql,.yaml,.yml,.toml,.log,.sh,.bash,.c,.cpp,.h,.hpp,.php,.rb,.swift,.kt,.env,.ini,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*"
+              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.xml,.html,.htm,.js,.jsx,.ts,.tsx,.css,.scss,.py,.java,.go,.rs,.sql,.yaml,.yml,.toml,.log,.sh,.bash,.c,.cpp,.h,.hpp,.php,.rb,.swift,.kt,.env,.ini,.lua,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*"
               onChange={(event) => void handleFilesSelected(event)}
               disabled={generating || readingFiles}
               aria-label="Chọn tệp để gửi cho DeepSeek"

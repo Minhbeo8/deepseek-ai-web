@@ -10,7 +10,8 @@ const apiUrl = 'https://api.apinex.bond/v1/chat/completions';
 const model = 'free/deepseek-v4-pro-0813';
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -36,7 +37,7 @@ app.post('/api/chat', async (req, res) => {
       message
       && (message.role === 'user' || message.role === 'assistant')
       && typeof message.content === 'string'
-      && message.content.length <= 30_000
+      && message.content.length <= 120_000
     ));
   if (!validMessages) {
     res.status(400).json({ error: 'Danh sách tin nhắn không hợp lệ.' });
