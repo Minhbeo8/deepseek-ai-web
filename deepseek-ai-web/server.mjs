@@ -22,6 +22,7 @@ app.use(cors());
 
 const API_URL = process.env.API_URL || 'https://motapis.com/v1/chat/completions';
 const API_KEY = process.env.API_KEY || process.env.APINEX_API_KEY;
+const DEFAULT_MODEL_NAME = process.env.MODEL_NAME || process.env.API_MODEL || 'DeepSeek';
 
 function getTextContent(value) {
   if (typeof value === 'string') return value;
@@ -54,6 +55,22 @@ function getErrorMessage(data, fallback) {
   if (typeof data?.message === 'string') return data.message;
   return fallback;
 }
+
+app.get('/api/healthz', (_req, res) => {
+  res.json({
+    ok: true,
+    status: 'healthy',
+    uptime: process.uptime(),
+    model: DEFAULT_MODEL_NAME,
+  });
+});
+
+app.get('/api/config', (_req, res) => {
+  res.json({
+    model: DEFAULT_MODEL_NAME,
+    apiConfigured: Boolean(API_KEY),
+  });
+});
 
 async function callModel(messages) {
   if (!API_KEY) {
@@ -299,8 +316,9 @@ app.post('/api/analyze-file', async (req, res) => {
     const userPrompt = (fields.prompt || 'Phân tích tệp này.').trim().slice(0, 1500);
 
     const analysisPrompt = [
-      'Bạn là trợ lý phân tích tệp theo hướng tĩnh và an toàn. Chỉ dựa trên metadata và byte preview dưới đây; không khẳng định đã chạy tệp, giải mã toàn bộ, hoặc tái dựng source nếu không có bằng chứng/công cụ phù hợp.',
-      'Nếu là Lua bytecode, giải thích ý nghĩa header đã nhận diện và giới hạn: hiện không có decompiler tích hợp; không bịa source. Nếu là định dạng thực thi, chỉ mô tả định dạng/signature, không hướng dẫn thực thi.',
+      'Bạn là trợ lý phân tích tệp theo hướng tĩnh và an toàn. Chỉ dựa trên metadata và byte preview dưới đây; không khẳng định đã chạy tệp, giải mã toàn bộ hoặc tạo source giả.',
+      'Tập trung vào: định dạng, hậu tố/gợi ý, headers, hex preview, lượng bytes, tính khả thi phân tích, rủi ro, và cách đánh giá an toàn.',
+      'Nếu là Lua bytecode, giải thích ý nghĩa header đã nhận diện và giới hạn: hiện không có decompiler tích hợp; không bịa source. Nếu là định dạng thực thể, chỉ mô tả nội dung có thể suy ra từ metadata.',
       `Yêu cầu: ${userPrompt}`,
       `Kết quả File Inspector: ${JSON.stringify({ ...inspection, hexPreview: inspection.hexPreview.slice(0, 768) })}`,
     ].join('\n\n');
