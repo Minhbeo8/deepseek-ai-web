@@ -2,12 +2,18 @@ import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cấu hình giới hạn payload và bật CORS
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cors());
@@ -15,6 +21,7 @@ app.use(cors());
 const API_URL = process.env.API_URL || "https://motapis.com/v1/chat/completions";
 const API_KEY = process.env.API_KEY || process.env.APINEX_API_KEY;
 
+// API endpoint xử lý chat
 app.post('/api/chat', async (req, res) => {
   try {
     const { messages } = req.body;
@@ -31,7 +38,7 @@ app.post('/api/chat', async (req, res) => {
         'User-Agent': 'Mozilla/5.0'
       },
       body: JSON.stringify({
-        model: "deepseek-v4-flash", 
+        model: "deepseek-v4-flash",
         messages: messages,
         stream: false
       })
@@ -48,6 +55,13 @@ app.post('/api/chat', async (req, res) => {
     console.error("Lỗi khi gọi API:", error);
     res.status(500).json({ error: { message: "Lỗi kết nối máy chủ nội bộ" } });
   }
+});
+
+// Phục vụ giao diện frontend (Vite build)
+app.use(express.static(path.join(__dirname, 'dist')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
