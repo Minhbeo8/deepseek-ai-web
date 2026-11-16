@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111311">
+  <title>Binary Analyzer · DeepSeek AI</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#111311;color:#eee}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#252820 0,#111311 48rem);padding:24px}
+    main{max-width:900px;margin:0 auto}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}.top a{color:#d7f36b;text-decoration:none}
+    h1{font-size:clamp(28px,6vw,42px);margin:18px 0 8px}p{color:#aaa;line-height:1.55}.card{background:#1c1e1a;border:1px solid #383a33;border-radius:18px;padding:22px;margin:16px 0}
+    .drop{border:1px dashed #737766;border-radius:14px;padding:28px 16px;text-align:center}.drop input{max-width:100%;margin:12px auto}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.prompt{width:100%;background:#111;border:1px solid #45473e;border-radius:10px;padding:12px;color:#eee;margin-top:12px}
+    button{border:0;border-radius:10px;padding:12px 16px;background:#d7f36b;color:#171910;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#30322c;color:#eee;border:1px solid #4b4d43}
+    progress{width:100%;height:12px;accent-color:#d7f36b;margin-top:14px}.status{min-height:24px;color:#cbdc91}.results{display:none}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.stat{background:#121411;border-radius:10px;padding:12px;overflow-wrap:anywhere}.label{color:#96998e;font-size:12px}.value{margin-top:5px;font-weight:600}.code{white-space:pre-wrap;overflow-wrap:anywhere;background:#10110f;border:1px solid #35372f;border-radius:10px;padding:12px;font:12px/1.6 ui-monospace,monospace;max-height:300px;overflow:auto}.explanation{white-space:pre-wrap;line-height:1.65}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.notice{font-size:13px;color:#b8baaf}.error{color:#ffa99b}
+    @media(max-width:600px){body{padding:14px}.card{padding:16px}.row>*{flex-basis:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="/">← DeepSeek AI</a><span>Static file analysis</span></div>
+  <h1>Binary Analyzer</h1>
+  <p>Tải tệp nguyên bản lên để kiểm tra signature, header, kích thước, SHA-256 và byte preview. Tệp được phân tích tĩnh, không thực thi và không lưu trên máy chủ.</p>
+  <section class="card">
+    <form id="form">
+      <div class="drop"><strong>Chọn tệp cần phân tích</strong><br><input id="file" name="file" type="file" required><div class="notice">Tối đa 12 MB · Không gửi tệp nếu bạn không có quyền phân tích.</div></div>
+      <textarea class="prompt" name="prompt" rows="2" placeholder="Bạn muốn kiểm tra điều gì? (không bắt buộc)"></textarea>
+      <div class="row" style="margin-top:14px"><button id="submit" type="submit">Tải lên & phân tích</button><button id="report" class="secondary" type="button" disabled>Xuất báo cáo JSON</button><button id="markdown" class="secondary" type="button" disabled>Xuất báo cáo Markdown</button></div>
+      <progress id="progress" max="100" value="0" hidden></progress><div id="status" class="status" role="status"></div>
+    </form>
+  </section>
+  <section id="results" class="results">
+    <div class="card"><h2>File Inspector / Binary Analyzer</h2><div id="stats" class="grid"></div><h3>Header / Hex preview</h3><pre id="hex" class="code"></pre><h3>ASCII preview</h3><pre id="ascii" class="code"></pre><p id="limits" class="notice"></p></div>
+    <div class="card"><h2>Motapis + DeepSeek</h2><div id="explanation" class="explanation"></div></div>
+    <div class="card"><h2>Lua Analyzer / Decompiler</h2><p id="lua" class="notice">Chưa phân tích.</p><p class="notice">Hiện tại chỉ nhận diện signature/header Lua bytecode. Chưa có decompiler thực tế; bytecode custom VM hoặc được bảo vệ cần công cụ/quy trình riêng. AI không thể khôi phục source chỉ bằng prompt.</p></div>
+  </section>
+</main>
+<script>
+  const form=document.querySelector('#form'), fileInput=document.querySelector('#file'), submit=document.querySelector('#submit'), progress=document.querySelector('#progress'), status=document.querySelector('#status'), results=document.querySelector('#results');
+  let latest=null;
+  const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const save=(name,type,text)=>{const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)};
+  form.addEventListener('submit',event=>{
+    event.preventDefault();const file=fileInput.files[0];if(!file)return;
+    if(file.size>12*1024*1024){status.textContent='Tệp vượt giới hạn 12 MB.';status.className='status error';return}
+    const data=new FormData(form);submit.disabled=true;progress.hidden=false;progress.value=0;status.textContent='Đang tải tệp lên…';status.className='status';results.style.display='none';
+    const xhr=new XMLHttpRequest();xhr.open('POST','/api/analyze-file');xhr.responseType='json';
+    xhr.upload.onprogress=e=>{if(e.lengthComputable){progress.value=Math.round(e.loaded/e.total*100);status.textContent=`Đang tải lên ${progress.value}%…`}};
+    xhr.onload=()=>{submit.disabled=false;const payload=xhr.response;
+      if(xhr.status<200||xhr.status>=300){status.textContent=payload?.error?.message||`Lỗi HTTP ${xhr.status}`;status.className='status error';return}
+      if(!payload?.inspection){status.textContent='Phản hồi phân tích không hợp lệ.';status.className='status error';return}
+      latest=payload;const i=payload.inspection;
+      const entries=[['Tên tệp',i.name],['Định dạng nhận diện',i.detectedFormat],['Nhóm',i.category],['Kích thước',`${i.sizeBytes.toLocaleString()} bytes`],['MIME khai báo',i.declaredMimeType],['SHA-256',i.sha256]];
+      document.querySelector('#stats').innerHTML=entries.map(([k,v])=>`<div class="stat"><div class="label">${escapeHtml(k)}</div><div class="value">${escapeHtml(v)}</div></div>`).join('');
+      document.querySelector('#hex').textContent=i.hexPreview||'(không có dữ liệu)';document.querySelector('#ascii').textContent=i.asciiPreview||'(không có dữ liệu)';
+      document.querySelector('#limits').textContent=`${i.safetyNote} ${i.sourceReconstruction}`;
+      document.querySelector('#lua').textContent=i.lua?`Lua ${i.lua.version}; format byte: ${i.lua.formatByte}; header: ${i.lua.headerHex}\n${i.lua.decompiler}`:'Tệp không có Lua signature đã biết.';
+      document.querySelector('#explanation').textContent=payload.explanation||'Không có giải thích.';results.style.display='block';status.textContent='Phân tích hoàn tất.';document.querySelector('#report').disabled=false;document.querySelector('#markdown').disabled=false;results.scrollIntoView({behavior:'smooth'});
+    };
+    xhr.onerror=()=>{submit.disabled=false;status.textContent='Không thể kết nối máy chủ.';status.className='status error'};
+    xhr.send(data);
+  });
+  document.querySelector('#report').addEventListener('click',()=>{if(latest)save('file-analysis-report.json','application/json',JSON.stringify(latest,null,2))});
+  document.querySelector('#markdown').addEventListener('click',()=>{if(!latest)return;const i=latest.inspection;const text=`# Báo cáo phân tích tệp\n\n- Tên: ${i.name}\n- Định dạng: ${i.detectedFormat}\n- Kích thước: ${i.sizeBytes} bytes\n- SHA-256: ${i.sha256}\n- Header: ${i.headerHex}\n\n## Byte preview\n\n\`\`\`\n${i.hexPreview}\n\`\`\`\n\n## Giải thích AI\n\n${latest.explanation}\n\n## Giới hạn\n\n${i.safetyNote}\n${i.sourceReconstruction}\n`;save('file-analysis-report.md','text/markdown;charset=utf-8',text)});
+</script>
+</body>
+</html>
